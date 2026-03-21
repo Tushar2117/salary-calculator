@@ -7,7 +7,7 @@ st.title("💼 Salary Calculator")
 st.markdown("### Enter details to calculate salary structure")
 
 # -------------------------------
-# Upload Excel
+# Load Excel
 # -------------------------------
 file = "salary_data.xlsx"
 
@@ -15,21 +15,21 @@ wages_df = pd.read_excel(file, sheet_name="wages", header=[0,1])
 pt_df = pd.read_excel(file, sheet_name="pt")
 lwf_df = pd.read_excel(file, sheet_name="lwf")
 
-    # Fix columns
+# Fix columns
 wages_df.columns = [' '.join(col).strip() for col in wages_df.columns]
 wages_df.columns = wages_df.columns.str.strip()
 
 pt_df.columns = pt_df.columns.str.strip()
 lwf_df.columns = lwf_df.columns.str.strip()
 
-    # Rename State column
+# Rename State column
 for col in wages_df.columns:
     if "State" in col or "Location" in col:
         wages_df.rename(columns={col: "State"}, inplace=True)
 
-    # -------------------------------
-    # Functions
-    # -------------------------------
+# -------------------------------
+# Functions
+# -------------------------------
 def get_wage_column(skill_type):
     skill_type = skill_type.lower()
 
@@ -45,10 +45,12 @@ def get_wage_column(skill_type):
         elif skill_type == "highly skilled" and "highly" in c and "monthly" in c:
             return col
 
+
 def get_min_wage(state, skill):
     col = get_wage_column(skill)
     row = wages_df[wages_df["State"].str.upper() == state.upper()]
     return float(row.iloc[0][col])
+
 
 def get_pt(state, gross):
     df = pt_df[pt_df["State"].str.upper() == state.upper()]
@@ -57,17 +59,19 @@ def get_pt(state, gross):
             return 0 if pd.isna(r["PT"]) else float(r["PT"])
     return 0
 
+
 def get_lwf(state):
     df = lwf_df[lwf_df["State"].str.upper() == state.upper()]
     if df.empty or df.iloc[0]["Status"] != "Applicable":
-        return (0,0)
+        return (0, 0)
     return float(df.iloc[0]["Employer Contribution"]), float(df.iloc[0]["Employee Contribution"])
+
 
 def calculate_salary(state, skill, nth):
 
     basic = get_min_wage(state, skill)
 
-    hra = 0.05 * basic if state.upper() in ["MAHARASHTRA","WEST BENGAL"] else 0.40 * basic
+    hra = 0.05 * basic if state.upper() in ["MAHARASHTRA", "WEST BENGAL"] else 0.40 * basic
     cca = 0
     bonus = 0 if basic > 21000 else 0.0833 * basic
 
@@ -108,18 +112,19 @@ def calculate_salary(state, skill, nth):
         "Net Take Home": nth
     }
 
-    # -------------------------------
-    # UI Inputs
-    # -------------------------------
-    state = st.selectbox("Select State", wages_df["State"].dropna().unique())
-    skill = st.selectbox("Select Skill Type", ["Unskilled","Semi Skilled","Skilled","Highly Skilled"])
-    nth = st.number_input("Enter In-Hand Salary", min_value=0)
 
-    if st.button("Calculate Salary"):
+# -------------------------------
+# UI Inputs (OUTSIDE FUNCTIONS)
+# -------------------------------
+state = st.selectbox("Select State", wages_df["State"].dropna().unique())
+skill = st.selectbox("Select Skill Type", ["Unskilled", "Semi Skilled", "Skilled", "Highly Skilled"])
+nth = st.number_input("Enter In-Hand Salary", min_value=0)
 
-        result = calculate_salary(state, skill, nth)
+if st.button("Calculate Salary"):
 
-        st.success("Calculation Done ✅")
+    result = calculate_salary(state, skill, nth)
 
-        st.subheader("📊 Salary Breakdown")
-        st.table(pd.DataFrame(result.items(), columns=["Component", "Amount"]))
+    st.success("Calculation Done ✅")
+
+    st.subheader("📊 Salary Breakdown")
+    st.table(pd.DataFrame(result.items(), columns=["Component", "Amount"]))

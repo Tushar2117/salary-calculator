@@ -16,11 +16,11 @@ pt_df = pd.read_excel(file, sheet_name="pt")
 lwf_df = pd.read_excel(file, sheet_name="lwf")
 
     # Fix columns
-    wages_df.columns = [' '.join(col).strip() for col in wages_df.columns]
-    wages_df.columns = wages_df.columns.str.strip()
+wages_df.columns = [' '.join(col).strip() for col in wages_df.columns]
+wages_df.columns = wages_df.columns.str.strip()
 
-    pt_df.columns = pt_df.columns.str.strip()
-    lwf_df.columns = lwf_df.columns.str.strip()
+pt_df.columns = pt_df.columns.str.strip()
+lwf_df.columns = lwf_df.columns.str.strip()
 
     # Rename State column
     for col in wages_df.columns:

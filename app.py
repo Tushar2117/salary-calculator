@@ -15,12 +15,23 @@ wages_df = pd.read_excel(file, sheet_name="wages", header=[0,1])
 pt_df = pd.read_excel(file, sheet_name="pt")
 lwf_df = pd.read_excel(file, sheet_name="lwf")
 
-# Fix columns
+# -------------------------------
+# CLEANING DATA
+# -------------------------------
+
+# Fix multi-header columns
 wages_df.columns = [' '.join(col).strip() for col in wages_df.columns]
 wages_df.columns = wages_df.columns.str.strip()
 
+# Clean PT & LWF columns
 pt_df.columns = pt_df.columns.str.strip()
 lwf_df.columns = lwf_df.columns.str.strip()
+
+# Fix wrong column name (Cateogry -> Gender)
+pt_df.rename(columns={
+    "Cateogry": "Gender",
+    "category": "Gender"
+}, inplace=True)
 
 # Rename State column
 for col in wages_df.columns:
@@ -28,7 +39,7 @@ for col in wages_df.columns:
         wages_df.rename(columns={col: "State"}, inplace=True)
 
 # -------------------------------
-# Helper Functions
+# HELPER FUNCTIONS
 # -------------------------------
 def get_wage_column(skill_type):
     skill_type = skill_type.lower()
@@ -50,16 +61,19 @@ def get_min_wage(state, skill):
     row = wages_df[wages_df["State"].str.upper() == state.upper()]
     return float(row.iloc[0][col])
 
-# ✅ PT with Gender logic
+# PT with Gender Logic
 def get_pt(state, gross, gender):
     df = pt_df[pt_df["State"].str.upper() == state.upper()]
 
     for _, r in df.iterrows():
         if r["From_Value"] <= gross <= r["To_Value"]:
 
-            # Gender condition
             if "Gender" in df.columns:
-                if str(r["Gender"]).lower() == "male" and gender.lower() != "male":
+                category = str(r["Gender"]).lower()
+
+                if category == "male" and gender.lower() != "male":
+                    return 0
+                elif category == "female" and gender.lower() != "female":
                     return 0
 
             return 0 if pd.isna(r["PT"]) else float(r["PT"])
@@ -75,7 +89,7 @@ def get_lwf(state):
     return float(df.iloc[0]["Employer Contribution"]), float(df.iloc[0]["Employee Contribution"])
 
 # -------------------------------
-# Salary Calculation
+# MAIN CALCULATION
 # -------------------------------
 def calculate_salary(state, skill, nth, metro, insurance, gender):
 
@@ -89,10 +103,10 @@ def calculate_salary(state, skill, nth, metro, insurance, gender):
 
     bonus = 0 if basic > 21000 else 0.0833 * basic
 
-    # Iterative solve for CCA
     cca = 0
     gross = basic + hra + bonus
 
+    # Adjust CCA dynamically
     for _ in range(100):
 
         pf_base = basic + cca
@@ -104,7 +118,6 @@ def calculate_salary(state, skill, nth, metro, insurance, gender):
 
         total_deduction = emp_pf + emp_esi + pt + lwf_ee
 
-        # adjust CCA to match NTH
         required_gross = nth + total_deduction
         new_cca = required_gross - (basic + hra + bonus)
 
@@ -115,7 +128,7 @@ def calculate_salary(state, skill, nth, metro, insurance, gender):
         cca = new_cca
         gross = basic + hra + cca + bonus
 
-    # Final calculations
+    # Final Calculations
     pf_base = basic + cca
 
     employer_pf = 1950 if pf_base > 15000 else 0.13 * pf_base
@@ -136,7 +149,7 @@ def calculate_salary(state, skill, nth, metro, insurance, gender):
         "Bonus": round(bonus, 2),
         "Gross": round(gross, 2),
 
-        # PART B (Employer)
+        # PART B
         "Employer PF": round(employer_pf, 2),
         "Employer ESI": round(employer_esi, 2),
         "LWF Employer": round(lwf_er, 2),
@@ -144,7 +157,7 @@ def calculate_salary(state, skill, nth, metro, insurance, gender):
         "Total Contribution": round(total_contribution, 2),
         "CTC": round(ctc, 2),
 
-        # PART C (Employee)
+        # PART C
         "Employee PF": round(emp_pf, 2),
         "Employee ESI": round(emp_esi, 2),
         "PT": round(pt, 2),
@@ -154,7 +167,7 @@ def calculate_salary(state, skill, nth, metro, insurance, gender):
     }
 
 # -------------------------------
-# UI Inputs
+# UI INPUTS
 # -------------------------------
 state = st.selectbox("Select State", wages_df["State"].dropna().unique())
 
@@ -170,7 +183,7 @@ nth = st.number_input("Enter In-Hand Salary", min_value=0)
 insurance = st.number_input("Enter Insurance Amount", min_value=0)
 
 # -------------------------------
-# Button
+# BUTTON
 # -------------------------------
 if st.button("Calculate Salary"):
 

@@ -28,7 +28,7 @@ for col in wages_df.columns:
         wages_df.rename(columns={col: "State"}, inplace=True)
 
 # -------------------------------
-# Functions
+# Helper Functions
 # -------------------------------
 def get_wage_column(skill_type):
     skill_type = skill_type.lower()
@@ -45,86 +45,140 @@ def get_wage_column(skill_type):
         elif skill_type == "highly skilled" and "highly" in c and "monthly" in c:
             return col
 
-
 def get_min_wage(state, skill):
     col = get_wage_column(skill)
     row = wages_df[wages_df["State"].str.upper() == state.upper()]
     return float(row.iloc[0][col])
 
-
-def get_pt(state, gross):
+# ✅ PT with Gender logic
+def get_pt(state, gross, gender):
     df = pt_df[pt_df["State"].str.upper() == state.upper()]
+
     for _, r in df.iterrows():
         if r["From_Value"] <= gross <= r["To_Value"]:
-            return 0 if pd.isna(r["PT"]) else float(r["PT"])
-    return 0
 
+            # Gender condition
+            if "Gender" in df.columns:
+                if str(r["Gender"]).lower() == "male" and gender.lower() != "male":
+                    return 0
+
+            return 0 if pd.isna(r["PT"]) else float(r["PT"])
+
+    return 0
 
 def get_lwf(state):
     df = lwf_df[lwf_df["State"].str.upper() == state.upper()]
+
     if df.empty or df.iloc[0]["Status"] != "Applicable":
         return (0, 0)
+
     return float(df.iloc[0]["Employer Contribution"]), float(df.iloc[0]["Employee Contribution"])
 
-
-def calculate_salary(state, skill, nth):
+# -------------------------------
+# Salary Calculation
+# -------------------------------
+def calculate_salary(state, skill, nth, metro, insurance, gender):
 
     basic = get_min_wage(state, skill)
 
-    hra = 0.05 * basic if state.upper() in ["MAHARASHTRA", "WEST BENGAL"] else 0.40 * basic
-    cca = 0
+    # HRA Logic
+    if state.upper() in ["MAHARASHTRA", "WEST BENGAL"]:
+        hra = 0.05 * basic
+    else:
+        hra = 0.50 * basic if metro == "Metro" else 0.40 * basic
+
     bonus = 0 if basic > 21000 else 0.0833 * basic
 
-    gross = nth
+    # Iterative solve for CCA
+    cca = 0
+    gross = basic + hra + bonus
 
-    for _ in range(50):
+    for _ in range(100):
 
         pf_base = basic + cca
 
         emp_pf = 1800 if pf_base > 15000 else 0.12 * pf_base
         emp_esi = 0 if gross > 21000 else 0.0075 * gross
-        pt = get_pt(state, gross)
-        lwf_emp, lwf_emp_emp = get_lwf(state)
+        pt = get_pt(state, gross, gender)
+        lwf_er, lwf_ee = get_lwf(state)
 
-        total_ded = emp_pf + emp_esi + lwf_emp_emp + pt
+        total_deduction = emp_pf + emp_esi + pt + lwf_ee
 
-        new_gross = nth + total_ded
+        # adjust CCA to match NTH
+        required_gross = nth + total_deduction
+        new_cca = required_gross - (basic + hra + bonus)
 
-        if abs(new_gross - gross) < 1:
+        if abs(new_cca - cca) < 1:
+            cca = new_cca
             break
 
-        gross = new_gross
+        cca = new_cca
+        gross = basic + hra + cca + bonus
+
+    # Final calculations
+    pf_base = basic + cca
 
     employer_pf = 1950 if pf_base > 15000 else 0.13 * pf_base
     employer_esi = 0 if gross > 21000 else 0.0325 * gross
 
-    ctc = gross + employer_pf + employer_esi + lwf_emp
+    lwf_er, lwf_ee = get_lwf(state)
+
+    total_contribution = employer_pf + employer_esi + lwf_er + insurance
+    total_deduction = emp_pf + emp_esi + pt + lwf_ee
+
+    ctc = gross + total_contribution
 
     return {
+        # PART A
         "Basic": round(basic, 2),
         "HRA": round(hra, 2),
+        "CCA": round(cca, 2),
         "Bonus": round(bonus, 2),
         "Gross": round(gross, 2),
+
+        # PART B (Employer)
+        "Employer PF": round(employer_pf, 2),
+        "Employer ESI": round(employer_esi, 2),
+        "LWF Employer": round(lwf_er, 2),
+        "Insurance": round(insurance, 2),
+        "Total Contribution": round(total_contribution, 2),
+        "CTC": round(ctc, 2),
+
+        # PART C (Employee)
         "Employee PF": round(emp_pf, 2),
         "Employee ESI": round(emp_esi, 2),
         "PT": round(pt, 2),
-        "CTC": round(ctc, 2),
+        "LWF Employee": round(lwf_ee, 2),
+        "Total Deduction": round(total_deduction, 2),
         "Net Take Home": nth
     }
 
-
 # -------------------------------
-# UI Inputs (OUTSIDE FUNCTIONS)
+# UI Inputs
 # -------------------------------
 state = st.selectbox("Select State", wages_df["State"].dropna().unique())
-skill = st.selectbox("Select Skill Type", ["Unskilled", "Semi Skilled", "Skilled", "Highly Skilled"])
+
+skill = st.selectbox("Select Skill Type",
+                     ["Unskilled", "Semi Skilled", "Skilled", "Highly Skilled"])
+
+metro = st.selectbox("Metro / Non-Metro", ["Metro", "Non-Metro"])
+
+gender = st.selectbox("Select Gender", ["Male", "Female"])
+
 nth = st.number_input("Enter In-Hand Salary", min_value=0)
 
+insurance = st.number_input("Enter Insurance Amount", min_value=0)
+
+# -------------------------------
+# Button
+# -------------------------------
 if st.button("Calculate Salary"):
 
-    result = calculate_salary(state, skill, nth)
+    result = calculate_salary(state, skill, nth, metro, insurance, gender)
 
     st.success("Calculation Done ✅")
 
     st.subheader("📊 Salary Breakdown")
-    st.table(pd.DataFrame(result.items(), columns=["Component", "Amount"]))
+
+    df = pd.DataFrame(result.items(), columns=["Component", "Amount"])
+    st.table(df)
